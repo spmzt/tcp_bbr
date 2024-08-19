@@ -72,6 +72,11 @@ static void BBRResetFullBW(struct tcp_bbr *BBR) {
     BBR->full_bw_now = 0;
 }
 
+/*
+ * When a BBR flow starts it has no bw estimate (bw is 0).
+ * So in this case it sets an initial pacing rate based on the transport sender implementation's initial congestion window ("InitialCwnd", e.g. from [RFC6928]),
+ * the initial SRTT (smoothed round-trip time) after the first non-zero RTT sample, and the initial pacing_gain
+ */
 static void BBRInitPacingRate(struct tcp_bbr *BBR, struct tcp_cb *tp) {
     uint32_t InitialCwnd = initial_window(tp);
 
