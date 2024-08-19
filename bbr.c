@@ -100,7 +100,6 @@ static void BBREnterStartup(struct tcp_bbr *BBR) {
  * BBR executes its initialization steps
  */
 static void BBROnInit(struct tcp_cb *tp) {
-    struct minmax_sample m = {0};
     struct tcp_bbr BBR = {.MaxBwFilter = {0}};
 
     InitWindowedMaxFilter(&BBR.MaxBwFilter, 0, .0);
