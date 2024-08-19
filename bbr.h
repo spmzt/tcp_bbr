@@ -36,8 +36,7 @@ struct tcp_bbr {
     uint32_t prior_cwnd; /* prior cwnd upon entering loss recovery */
     uint32_t bw_latest; /* a 1-round-trip max of delivered bandwidth (rs.delivery_rate). */
     uint32_t inflight_latest; /* a 1-round-trip max of delivered volume of data (rs.delivered) */
-	uint32_t bw_lo; /* lower 32 bits of bw */
-	uint32_t bw_hi; /* upper 32 bits of bw */
+    uint32_t bw_lo; /* lower 32 bits of bw */
     uint32_t next_round_delivered; /* packet.delivered value denoting the end of a packet-timed round trip. */
     uint32_t round_count; /* Count of packet-timed round trips elapsed so far. */
 
