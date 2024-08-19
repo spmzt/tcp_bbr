@@ -1,0 +1,9 @@
+{
+    "cmake.buildDirectory": "${workspaceFolder}/debug",
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "clangd.path": "/usr/bin/clangd-18",
+    "clangd.arguments": ["-log=verbose", 
+                         "-pretty", 
+                         "--background-index", 
+                         "--compile-commands-dir=debug"]
+}
