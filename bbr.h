@@ -1,5 +1,7 @@
 #include <stdint.h>
 #include <limits.h>
+#include <sys/types.h>
+#include "cc.h"
 
 #define Infinity    UINT_MAX;
 
@@ -16,6 +18,22 @@ enum bbr_mode {
 	PROBE_RTT,	/* cut inflight to min to probe min_rtt */
 };
 
+/* bbr probe_bw modes */
+enum bbr_bw_mode {
+    PROBE_BW_DOWN,
+    PROBE_BW_CRUISE,
+    PROBE_BW_REFILL,
+    PROBE_BW_UP,
+};
+
+/* bbr ack phases */
+enum bbr_ack_phases {
+    ACKS_PROBE_STARTING, /* Probe BW UP */
+    ACKS_REFILLING, /* Probe BW REFILL */
+    ACKS_PROBE_STOPPING, /* Probe BW DOWN */
+    ACKS_PROBE_FEEDBACK, /* starting to get bw probing samples */
+};
+
 /* A single data point for our parameterized min-max tracker */
 struct minmax_sample {
 	uint32_t t;	/* time measurement was taken */
@@ -27,13 +45,19 @@ struct MaxBwFilter {
 };
 
 struct tcp_bbr {
+    struct tcp_cb *C; /* The tcp control block lock */
     struct MaxBwFilter MaxBwFilter;
+    
+    uint64_t bw_probe_wait; /* how long to wait until probing for bandwidth by between 2-3 seconds in usec */
     uint64_t min_rtt; /* Estimated Minimum Round-Trip Time */
     uint64_t min_rtt_stamp; /* The wall clock time at which the current BBR.min_rtt sample was obtained */
     uint64_t probe_rtt_done_stamp; /* end time for BBR_PROBE_RTT mode */
+    uint64_t probe_rtt_min_stamp; /* The wall clock time at which the current BBR.probe_rtt_min_delay sample was obtained. */
     uint64_t extra_acked_interval_start; /* the start of the time interval for estimating the excess amount of data acknowledged due to aggregation effects. */
     uint32_t extra_acked_delivered; /* the volume of data marked as delivered since BBR.extra_acked_interval_start. */
     uint32_t prior_cwnd; /* prior cwnd upon entering loss recovery */
+    uint32_t bw; /* he maximum sending bandwidth that the algorithm estimates is appropriate for matching the current network path delivery rate, given all available signals in the model, at any time scale. It is the min() of max_bw and bw_lo. */
+    uint32_t max_bw; /* the full bandwidth available to the flow */
     uint32_t bw_latest; /* a 1-round-trip max of delivered bandwidth (rs.delivery_rate). */
     uint32_t inflight_latest; /* a 1-round-trip max of delivered volume of data (rs.delivered) */
     uint32_t bw_lo; /* lower 32 bits of bw */
@@ -56,16 +80,27 @@ struct tcp_bbr {
      */
     uint32_t inflight_lo;
 
-    uint8_t full_bw_reached:1, /* reached full bw in Startup? */
+    /* unkwown variables */
+    uint64_t cycle_stamp; /* the probe bw wall clock */
+    uint bw_probe_up_rounds;
+    uint bw_probe_up_acks;
+    uint probe_up_cnt;
+    uint rounds_since_bw_probe;
+
+    uint16_t full_bw_reached:1, /* reached full bw in Startup? */
             probe_rtt_round_done:1,
-    		idle_restart:1, /* restarting after idle? */
+            idle_restart:1, /* restarting after idle? */
             loss_in_round:1, /* first loss in this round trip? */
             round_start:1, /* A boolean that BBR sets to true once per packet-timed round trip, on ACKs that advance BBR.round_count. */
             full_bw_now:1, /* A boolean that records whether BBR estimates that it has fully utilized its available bandwidth since it most recetly started looking. */
-            state:2; /* bbr_mode */
+            state:2, /* bbr_mode */
+            sub_state:2, /* bbr sub state of Probe_BW */
+            ack_phase:2, /* bbr ack phases */
+            unused:4;
 };
 
-static inline uint32_t minmax_reset(struct MaxBwFilter *m, uint32_t time, uint32_t value)
+static inline uint32_t
+minmax_reset(struct MaxBwFilter *m, uint32_t time, uint32_t value)
 {
 	struct minmax_sample val = { .t = time, .v = value };
 
@@ -74,7 +109,9 @@ static inline uint32_t minmax_reset(struct MaxBwFilter *m, uint32_t time, uint32
 }
 
 /* As time advances, update the 1st and 2nd choices. */
-static uint32_t minmax_subwin_update(struct MaxBwFilter *m, uint32_t win, const struct minmax_sample *val) {
+static uint32_t
+minmax_subwin_update(struct MaxBwFilter *m, uint32_t win, const struct minmax_sample *val)
+{
     uint32_t dt = val->t - m->s[0].t;
 
     if (dt > win) {
