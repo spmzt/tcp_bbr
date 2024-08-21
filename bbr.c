@@ -110,7 +110,9 @@ BBRInitPacingRate(struct tcp_bbr *BBR)
  * When initializing a connection, or upon any later entry into Startup mode,
  * BBR executes the following BBREnterStartup() steps
  */
-static void BBREnterStartup(struct tcp_bbr *BBR) {
+static void
+BBREnterStartup(struct tcp_bbr *BBR)
+{
     BBR->state = STARTUP;
     BBR->pacing_gain = BBRStartupPacingGain;
     BBR->cwnd_gain = BBRDefaultCwndGain;
@@ -142,21 +144,39 @@ static void BBROnInit(struct tcp_cb *C) {
     BBREnterStartup(&BBR);
 };
 
-static void BBRCheckStartupHighLoss() {
+/*
+ * 1. The connection has been in fast recovery for at least one full packet-timed round trip.
+ * 2. The loss rate over the time scale of a single full round trip exceeds BBRLossThresh (2%).
+ * 3. There are at least BBRStartupFullLossCnt=6 discontiguous sequence ranges lost in that round trip.
+ * If these criteria are all met, then BBRCheckStartupHighLoss() takes the following steps.
+ * First, it sets BBR.full_bw_reached = true.
+ * Then it sets BBR.inflight_hi to its estimate of a safe level of in-flight data suggested by these losses,
+ * which is max(BBR.bdp, BBR.inflight_latest),
+ * where BBR.inflight_latest is the max delivered volume of data (rs.delivered) over the last round trip.
+ * Finally, it exits Startup and enters Drain.
+ */
+static void
+BBRCheckStartupHighLoss(struct tcp_bbr *BBR)
+{
+    BBR->full_bw_reached = true;
+    BBR->inflight_hi = max(BBR->bdp, BBR->inflight_latest);
+}
+
+static void
+BBREnterDrain()
+{
 
 }
 
-static void BBREnterDrain() {
-
-}
-
-static void BBRCheckStartupDone(struct tcp_bbr *BBR) {
-    BBRCheckStartupHighLoss();
+static void
+BBRCheckStartupDone(struct tcp_bbr *BBR)
+{
+    BBRCheckStartupHighLoss(BBR);
     if (BBR->state == STARTUP && BBR->full_bw_reached)
         BBREnterDrain();
 };
 
-static void BBRUpdateRound(struct tcp_bbr) {
+static void BBRUpdateRound(struct tcp_bbr *BBR) {
 
 }
 
@@ -295,7 +315,7 @@ BBRCheckProbeRTTDone(struct tcp_bbr *BBR)
         /* schedule next ProbeRTT: */
         BBR->probe_rtt_min_stamp = Now();
         BBRRestoreCwnd(BBR);
-        BBRExitProbeRTT();
+        BBRExitProbeRTT(BBR);
     }
 };
 
@@ -326,6 +346,8 @@ static void BBRHandleRestartFromIdle(struct tcp_bbr *BBR) {
  *
  When transmitting, BBR merely needs to check for the case where the flow is restarting from idle.
  */
-static void BBROnTransmit() {
-    BBRHandleRestartFromIdle();
+static void
+BBROnTransmit(struct tcp_bbr *BBR)
+{
+    BBRHandleRestartFromIdle(BBR);
 }

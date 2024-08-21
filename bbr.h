@@ -48,6 +48,7 @@ struct tcp_bbr {
     struct tcp_cb *C; /* The tcp control block lock */
     struct MaxBwFilter MaxBwFilter;
     
+    uint64_t bdp; /* The estimate of the network path's BDP (Bandwidth-Delay Product), computed as: BBR.bdp = BBR.bw * BBR.min_rtt. */
     uint64_t bw_probe_wait; /* how long to wait until probing for bandwidth by between 2-3 seconds in usec */
     uint64_t min_rtt; /* Estimated Minimum Round-Trip Time */
     uint64_t min_rtt_stamp; /* The wall clock time at which the current BBR.min_rtt sample was obtained */
@@ -60,6 +61,14 @@ struct tcp_bbr {
     uint32_t max_bw; /* the full bandwidth available to the flow */
     uint32_t bw_latest; /* a 1-round-trip max of delivered bandwidth (rs.delivery_rate). */
     uint32_t inflight_latest; /* a 1-round-trip max of delivered volume of data (rs.delivered) */
+
+    /* The long-term maximum volume of in-flight data that the algorithm estimates will produce acceptable queue pressure,
+     * based on signals in the current or previous bandwidth probing cycle, as measured by loss.
+     * That is, if a flow is probing for bandwidth, and observes that sending a particular volume of in-flight data causes a loss rate higher than the loss rate objective,
+     * it sets inflight_hi to that volume of data. (Part of the long-term model.
+     */
+    uint32_t inflight_hi;
+
     uint32_t bw_lo; /* lower 32 bits of bw */
     uint32_t next_round_delivered; /* packet.delivered value denoting the end of a packet-timed round trip. */
     uint32_t round_count; /* Count of packet-timed round trips elapsed so far. */
